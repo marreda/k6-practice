@@ -13,6 +13,7 @@ const credentials = new SharedArray('Get User Credentials', function () {
 let sessionValue = "";
 let departureCity = "";
 let arrivalCity = "";
+let payloadFlightData = {}
 
 export const options = {
     iterations: 1,
@@ -41,7 +42,7 @@ export function login() {
         password: credentials.password,
     };
     const loginPostResult = http.post(
-        BASE_URL + '/login.pl?intro=true',
+        BASE_URL + '/login.pl',
         JSON.stringify(payload),
         headers
     );
@@ -69,7 +70,7 @@ export function login() {
     );
 }
 
-export function findFlight() {
+export function chooseFlightCities() {
     const searchPageResult = http.get(BASE_URL + '/welcome.pl?page=search');
     check(
         searchPageResult,
@@ -106,6 +107,51 @@ export function findFlight() {
             arrivalCities.push(item.val());
         });
     arrivalCity = randomItem(arrivalCities.filter((item) => item !== departureCity));
+
+    // Заполняем данные о полете для POST-запроса
+    payloadFlightData["advanceDiscount"] = doc.find('input[name=advanceDiscount]').val();
+    payloadFlightData["depart"] = departureCity;
+    payloadFlightData["departDate"] = doc.find('input[name=departDate]').val();
+    payloadFlightData["arrive"] = arrivalCity;
+    payloadFlightData["returnDate"] = doc.find('input[name=returnDate]').val();
+    payloadFlightData["numPassengers"] = doc.find('input[name=numPassengers]').val();
+    payloadFlightData["seatPref"] = doc.find('input[name=seatPref][checked=checked]').val();
+    payloadFlightData["seatType"] = doc.find('input[name=seatType][checked=checked]').val();
+}
+
+export function findFlight() {
+    const headers = {headers: {'Content-Type': 'application/x-www-form-urlencoded'}};
+    const flightReservationsResult = http.post(
+        BASE_URL + '/reservations.pl',
+        JSON.stringify(payloadFlightData),
+        headers
+    );
+    check(
+        flightReservationsResult,
+        {
+            'Find flight reservation data | status_code is 200': (res) => res.status === 200,
+            'Got correct title': flightReservationsResult.html().find('head title').text() === 'Flight Selections'
+        }
+    );
+
+    // // Получаем список рейсов по данному направлению
+    // let flights = []
+    // flightReservationsResult.html().find('blockquote table blockquote input[name=outboundFlight]')
+    //     .toArray()
+    //     .forEach(function (item) {
+    //         flights.push(item.val());
+    //     });
+    // const selectedFlight = randomItem(flights);
+    // console.log(selectedFlight)
+    // flightReservationsResult.html().find('input[name=outboundFlight]')
+    //     .toArray()
+    //     .forEach(function (item) {
+    //         console.log(item.val())
+    //     });
+
+
+    // const smth = flightReservationsResult.html().find('input[name=outboundFlight]').val();
+    // console.log(smth)
 }
 
 export default function () {
@@ -114,6 +160,9 @@ export default function () {
     });
     group('login', () => {
         login();
+    });
+    group('chooseFlightCities', () => {
+        chooseFlightCities();
     });
     group('findFlight', () => {
         findFlight();
