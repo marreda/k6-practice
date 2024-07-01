@@ -1,15 +1,18 @@
 import http from 'k6/http';
 import {check, group} from 'k6';
 import {SharedArray} from 'k6/data';
+import {randomItem} from 'https://jslib.k6.io/k6-utils/1.2.0/index.js';
 
 const BASE_URL = 'http://webtours.load-test.ru:1080/cgi-bin';
 
-const data = new SharedArray('get Users', function () {
+const credentials = new SharedArray('Get User Credentials', function () {
     const file = JSON.parse(open('./users.json'));
     return file.users;
 });
 
 let sessionValue = "";
+let departureCity = "";
+let arrivalCity = "";
 
 export const options = {
     iterations: 1,
@@ -34,8 +37,8 @@ export function login() {
     const headers = {headers: {'Content-Type': 'application/x-www-form-urlencoded'}};
     const payload = {
         userSession: sessionValue,
-        username: data.username,
-        password: data.password,
+        username: credentials.username,
+        password: credentials.password,
     };
     const loginPostResult = http.post(
         BASE_URL + '/login.pl?intro=true',
@@ -67,9 +70,9 @@ export function login() {
 }
 
 export function findFlight() {
-    const searchResult = http.get(BASE_URL + '/welcome.pl?page=search');
+    const searchPageResult = http.get(BASE_URL + '/welcome.pl?page=search');
     check(
-        searchResult,
+        searchPageResult,
         {'Open Find Flight Page | status_code is 200': (res) => res.status === 200}
     );
 
@@ -79,13 +82,30 @@ export function findFlight() {
         {'Open Flight Navigation Page | status_code is 200': (res) => res.status === 200}
     );
 
-    const getSessionResult = http.get(BASE_URL + '/reservations.pl?page=welcome');
+    const welcomeReservationsPageResult = http.get(BASE_URL + '/reservations.pl?page=welcome');
     check(
-        getSessionResult,
+        welcomeReservationsPageResult,
         {'Get reservation data | status_code is 200': (res) => res.status === 200}
     );
 
+    // Получаем список городов отправления и выбираем город отправления
+    const doc = welcomeReservationsPageResult.html();
+    let departureCities = []
+    doc.find('table select[name=depart] option')
+        .toArray()
+        .forEach(function (item) {
+            departureCities.push(item.val());
+        });
+    departureCity = randomItem(departureCities);
 
+    // Получаем список городов прибытия и выбираем город прибытия, отличный от города отправления
+    let arrivalCities = []
+    doc.find('table select[name=arrive] option')
+        .toArray()
+        .forEach(function (item) {
+            arrivalCities.push(item.val());
+        });
+    arrivalCity = randomItem(arrivalCities.filter((item) => item !== departureCity));
 }
 
 export default function () {
