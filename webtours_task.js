@@ -5,11 +5,12 @@ import {randomItem} from 'https://jslib.k6.io/k6-utils/1.2.0/index.js';
 
 const BASE_URL = 'http://webtours.load-test.ru:1080/cgi-bin';
 
-const credentials = new SharedArray('Get User Credentials', function () {
+const data = new SharedArray('Get User Credentials', function () {
     const file = JSON.parse(open('./users.json'));
     return file.users;
 });
 
+let cookie = ""
 let sessionValue = "";
 let departureCity = "";
 let arrivalCity = "";
@@ -25,8 +26,15 @@ export function getSessionFromRootPage() {
         welcomeResult,
         {'Open Welcome Page | status_code is 200': (res) => res.status === 200}
     );
+    cookie = welcomeResult.headers["Set-Cookie"]
 
-    const getSessionResult = http.get(BASE_URL + '/nav.pl?in=home');
+    const headers = {
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Cookie': cookie
+        }
+    };
+    const getSessionResult = http.get(BASE_URL + '/nav.pl?in=home', headers);
     check(
         getSessionResult,
         {'Get session | status_code is 200': (res) => res.status === 200}
@@ -35,32 +43,42 @@ export function getSessionFromRootPage() {
 }
 
 export function login() {
-    const headers = {headers: {'Content-Type': 'application/x-www-form-urlencoded'}};
+    const credentials = data[0]
     const payload = {
         userSession: sessionValue,
         username: credentials.username,
         password: credentials.password,
     };
-    const loginPostResult = http.post(
-        BASE_URL + '/login.pl',
-        JSON.stringify(payload),
-        headers
-    );
+    const loginPostResult = http.post(BASE_URL + '/login.pl', payload, {
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Cookie': cookie
+        }
+    });
     check(
         loginPostResult,
-        {'Login with credentials | status_code is 200': (res) => res.status === 200}
+        {
+            'Login with credentials | status_code is 200': (res) => res.status === 200,
+            'Got correct title': loginPostResult.html().find('head title').text() === 'Web Tours'
+        }
     );
+    cookie = loginPostResult.headers["Set-Cookie"]
 
-    const homeNavigationPageResult = http.get(BASE_URL + '/nav.pl?page=menu&in=home');
+    const headers = {
+        headers: {
+            'Cookie': cookie
+        }
+    };
+    const homeNavigationPageResult = http.get(BASE_URL + '/nav.pl?page=menu&in=home', headers);
     check(
         homeNavigationPageResult,
         {
             'Open Home Navigation Page | status_code is 200': (res) => res.status === 200,
-            'Got correct title': homeNavigationPageResult.html().find('head title').text() === 'Web Tours Navigation Bar'
+            'Got correct navigation title': homeNavigationPageResult.html().find('head title').text() === 'Web Tours Navigation Bar'
         }
     );
 
-    const loginGetResult = http.get(BASE_URL + '/login.pl?intro=true');
+    const loginGetResult = http.get(BASE_URL + '/login.pl?intro=true', headers);
     check(
         loginGetResult,
         {
@@ -70,20 +88,25 @@ export function login() {
     );
 }
 
-export function chooseFlightCities() {
-    const searchPageResult = http.get(BASE_URL + '/welcome.pl?page=search');
+export function chooseDirection() {
+    const headers = {
+        headers: {
+            'Cookie': cookie
+        }
+    };
+    const searchPageResult = http.get(BASE_URL + '/welcome.pl?page=search', headers);
     check(
         searchPageResult,
         {'Open Find Flight Page | status_code is 200': (res) => res.status === 200}
     );
 
-    const flightNavigationPageResult = http.get(BASE_URL + '/nav.pl?page=menu&in=flights');
+    const flightNavigationPageResult = http.get(BASE_URL + '/nav.pl?page=menu&in=flights', headers);
     check(
         flightNavigationPageResult,
         {'Open Flight Navigation Page | status_code is 200': (res) => res.status === 200}
     );
 
-    const welcomeReservationsPageResult = http.get(BASE_URL + '/reservations.pl?page=welcome');
+    const welcomeReservationsPageResult = http.get(BASE_URL + '/reservations.pl?page=welcome', headers);
     check(
         welcomeReservationsPageResult,
         {'Get reservation data | status_code is 200': (res) => res.status === 200}
@@ -120,7 +143,16 @@ export function chooseFlightCities() {
 }
 
 export function findFlight() {
-    const headers = {headers: {'Content-Type': 'application/x-www-form-urlencoded'}};
+    const headers = {
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Referer': 'http://webtours.load-test.ru:1080/cgi-bin/reservations.pl?page=welcome',
+            'Connection': 'keep-alive',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept-Encoding': 'gzip, deflate',
+            'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7'
+        }
+    };
     const flightReservationsResult = http.post(
         BASE_URL + '/reservations.pl',
         JSON.stringify(payloadFlightData),
@@ -134,13 +166,15 @@ export function findFlight() {
         }
     );
 
-    // // Получаем список рейсов по данному направлению
-    // let flights = []
-    // flightReservationsResult.html().find('blockquote table blockquote input[name=outboundFlight]')
-    //     .toArray()
-    //     .forEach(function (item) {
-    //         flights.push(item.val());
-    //     });
+    // Получаем список рейсов по данному направлению
+    let flights = []
+    flightReservationsResult.html().find('blockquote table blockquote input[name=outboundFlight]')
+        .toArray()
+        .forEach(function (item) {
+            console.log(item.val())
+            flights.push(item.val());
+        });
+    console.log(flights)
     // const selectedFlight = randomItem(flights);
     // console.log(selectedFlight)
     // flightReservationsResult.html().find('input[name=outboundFlight]')
@@ -161,10 +195,10 @@ export default function () {
     group('login', () => {
         login();
     });
-    group('chooseFlightCities', () => {
-        chooseFlightCities();
+    group('chooseDirection', () => {
+        chooseDirection();
     });
-    group('findFlight', () => {
-        findFlight();
-    });
+    // group('findFlight', () => {
+    //     findFlight();
+    // });
 }
