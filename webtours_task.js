@@ -91,7 +91,8 @@ export function login() {
 export function chooseDirection() {
     const headers = {
         headers: {
-            'Cookie': cookie
+            'Cookie': cookie,
+            'Pragma': 'no-cache'
         }
     };
     const searchPageResult = http.get(BASE_URL + '/welcome.pl?page=search', headers);
@@ -140,6 +141,8 @@ export function chooseDirection() {
     payloadFlightData["numPassengers"] = doc.find('input[name=numPassengers]').val();
     payloadFlightData["seatPref"] = doc.find('input[name=seatPref][checked=checked]').val();
     payloadFlightData["seatType"] = doc.find('input[name=seatType][checked=checked]').val();
+    payloadFlightData["findFlights.x"] = 46;
+    payloadFlightData["findFlights.y"] = 2;
 }
 
 export function findFlight() {
@@ -147,15 +150,13 @@ export function findFlight() {
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
             'Referer': 'http://webtours.load-test.ru:1080/cgi-bin/reservations.pl?page=welcome',
-            'Connection': 'keep-alive',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'Accept-Encoding': 'gzip, deflate',
-            'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7'
+            'Cookie': cookie,
+            'Pragma': 'no-cache'
         }
     };
     const flightReservationsResult = http.post(
         BASE_URL + '/reservations.pl',
-        JSON.stringify(payloadFlightData),
+        payloadFlightData,
         headers
     );
     check(
@@ -168,7 +169,7 @@ export function findFlight() {
 
     // Получаем список рейсов по данному направлению
     let flights = []
-    flightReservationsResult.html().find('blockquote table blockquote input[name=outboundFlight]')
+    flightReservationsResult.html().find('input[name=outboundFlight]')
         .toArray()
         .forEach(function (item) {
             console.log(item.val())
@@ -198,7 +199,7 @@ export default function () {
     group('chooseDirection', () => {
         chooseDirection();
     });
-    // group('findFlight', () => {
-    //     findFlight();
-    // });
+    group('findFlight', () => {
+        findFlight();
+    });
 }
