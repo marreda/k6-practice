@@ -2,6 +2,7 @@ import http from 'k6/http';
 import {check, group} from 'k6';
 import {SharedArray} from 'k6/data';
 import {randomItem} from 'https://jslib.k6.io/k6-utils/1.2.0/index.js';
+import {uuidv4} from 'https://jslib.k6.io/k6-utils/1.4.0/index.js';
 
 const BASE_URL = 'http://webtours.load-test.ru:1080/cgi-bin';
 
@@ -9,6 +10,7 @@ const data = new SharedArray('Get User Credentials', function () {
     const file = JSON.parse(open('./users.json'));
     return file.users;
 });
+const creditCard = uuidv4();
 
 let cookie = ""
 let sessionValue = "";
@@ -22,11 +24,14 @@ export const options = {
     iterations: 1,
 };
 
-export function getSessionFromRootPage() {
+function openWelcomePage() {
     const welcomeResult = http.get(BASE_URL + '/welcome.pl?signOff=true');
     check(
         welcomeResult,
-        {'Open Welcome Page | status_code is 200': (res) => res.status === 200}
+        {
+            'Open Welcome Page | status_code is 200': (res) => res.status === 200,
+            'Open Welcome Page | got correct title': welcomeResult.html().find('head title').text() === 'Web Tours'
+        }
     );
     cookie = welcomeResult.headers["Set-Cookie"]
 
@@ -39,12 +44,15 @@ export function getSessionFromRootPage() {
     const getSessionResult = http.get(BASE_URL + '/nav.pl?in=home', headers);
     check(
         getSessionResult,
-        {'Get session | status_code is 200': (res) => res.status === 200}
+        {
+            'Get session | status_code is 200': (res) => res.status === 200,
+            'Get session | got correct title': getSessionResult.html().find('head title').text() === 'Web Tours Navigation Bar'
+        }
     );
     sessionValue = getSessionResult.html().find('input[name=userSession]').first().attr('value');
 }
 
-export function login() {
+function login() {
     const credentials = data[0]
     const payload = {
         userSession: sessionValue,
@@ -61,7 +69,7 @@ export function login() {
         loginPostResult,
         {
             'Login with credentials | status_code is 200': (res) => res.status === 200,
-            'Got correct title': loginPostResult.html().find('head title').text() === 'Web Tours'
+            'Login with credentials | got correct title': loginPostResult.html().find('head title').text() === 'Web Tours'
         }
     );
     cookie = loginPostResult.headers["Set-Cookie"]
@@ -76,7 +84,7 @@ export function login() {
         homeNavigationPageResult,
         {
             'Open Home Navigation Page | status_code is 200': (res) => res.status === 200,
-            'Got correct navigation title': homeNavigationPageResult.html().find('head title').text() === 'Web Tours Navigation Bar'
+            'Open Home Navigation Page | got correct title': homeNavigationPageResult.html().find('head title').text() === 'Web Tours Navigation Bar'
         }
     );
 
@@ -85,16 +93,15 @@ export function login() {
         loginGetResult,
         {
             'Get Login Request | status_code is 200': (res) => res.status === 200,
-            'Got correct welcome title': loginGetResult.html().find('head title').text() === 'Welcome to Web Tours'
+            'Get Login Request | got correct title': loginGetResult.html().find('head title').text() === 'Welcome to Web Tours'
         }
     );
 }
 
-export function chooseDirection() {
+function chooseDirection() {
     const headers = {
         headers: {
-            'Cookie': cookie,
-            'Pragma': 'no-cache'
+            'Cookie': cookie
         }
     };
     const searchPageResult = http.get(BASE_URL + '/welcome.pl?page=search', headers);
@@ -147,12 +154,11 @@ export function chooseDirection() {
     payloadDirectionData["findFlights.y"] = 2;
 }
 
-export function findFlight() {
+function findFlight() {
     const headers = {
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
-            'Cookie': cookie,
-            'Pragma': 'no-cache'
+            'Cookie': cookie
         }
     };
     const flightReservationsResult = http.post(BASE_URL + '/reservations.pl', payloadDirectionData, headers);
@@ -160,7 +166,7 @@ export function findFlight() {
         flightReservationsResult,
         {
             'Find flight reservation data | status_code is 200': (res) => res.status === 200,
-            'Got correct title': flightReservationsResult.html().find('head title').text() === 'Flight Selections'
+            'Find flight reservation data | got correct title': flightReservationsResult.html().find('head title').text() === 'Flight Selections'
         }
     );
 
@@ -182,23 +188,23 @@ export function findFlight() {
     payloadFlightData["reserveFlights.y"] = 6;
 }
 
-export function checkPaymentDetails() {
+function checkPaymentDetails() {
     const headers = {
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
-            'Cookie': cookie,
-            'Pragma': 'no-cache'
+            'Cookie': cookie
         }
     };
-    const flightReservationsResult = http.post(BASE_URL + '/reservations.pl', payloadFlightData, headers);
+    const paymentDetailsResult = http.post(BASE_URL + '/reservations.pl', payloadFlightData, headers);
     check(
-        flightReservationsResult,
+        paymentDetailsResult,
         {
             'Payment reservation data | status_code is 200': (res) => res.status === 200,
-            'Got correct reservation title': flightReservationsResult.html().find('head title').text() === 'Flight Reservation'
+            'Payment reservation data | got correct title': paymentDetailsResult.html().find('head title').text() === 'Flight Reservation'
         }
     );
-    const doc = flightReservationsResult.html();
+    const doc = paymentDetailsResult.html();
+    const currentYear = new Date().getFullYear();
 
     // Заполняем данные о платеже для POST-запроса
     payloadPaymentData["firstName"] = doc.find('input[name=firstName]').val();
@@ -206,8 +212,8 @@ export function checkPaymentDetails() {
     payloadPaymentData["address1"] = doc.find('input[name=address1]').val();
     payloadPaymentData["address2"] = doc.find('input[name=address2]').val();
     payloadPaymentData["pass1"] = doc.find('input[name=pass1]').val();
-    payloadPaymentData["creditCard"] = doc.find('input[name=creditCard]').val();
-    payloadPaymentData["expDate"] = doc.find('input[name=expDate]').val();
+    payloadPaymentData["creditCard"] = creditCard;
+    payloadPaymentData["expDate"] = currentYear + 1;
     payloadPaymentData["oldCCOption"] = doc.find('input[name=oldCCOption]').val();
     payloadPaymentData["numPassengers"] = payloadFlightData["numPassengers"];
     payloadPaymentData["seatType"] = payloadFlightData["seatType"];
@@ -218,24 +224,81 @@ export function checkPaymentDetails() {
     payloadPaymentData["JSFormSubmit"] = doc.find('input[name=JSFormSubmit]').val();
     payloadPaymentData["buyFlights.x"] = 76;
     payloadPaymentData["buyFlights.y"] = 6;
+}
 
-    console.log(payloadPaymentData)
+function buyTicket() {
+    const headers = {
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Cookie': cookie
+        }
+    };
+    const buyTicketResult = http.post(BASE_URL + '/reservations.pl', payloadPaymentData, headers);
+    check(
+        buyTicketResult,
+        {
+            'Buy ticket request | status_code is 200': (res) => res.status === 200,
+            'Buy ticket request | got correct title': buyTicketResult.html().find('head title').text() === 'Reservation Made!'
+        }
+    );
+}
+
+function openHomePage() {
+    const headers = {
+        headers: {
+            'Cookie': cookie
+        }
+    };
+    const openHomeResult = http.get(BASE_URL + '/welcome.pl?page=menus');
+    check(
+        openHomeResult,
+        {
+            'Open Home Page | status_code is 200': (res) => res.status === 200,
+            'Open Home Page | got correct title': openHomeResult.html().find('head title').text() === 'Web Tours'
+        }
+    );
+
+    const homeNavigationResult = http.get(BASE_URL + '/nav.pl?page=menu&in=home', headers);
+    check(
+        homeNavigationResult,
+        {
+            'Open Navigation Page | status_code is 200': (res) => res.status === 200,
+            'Open Navigation Page | got correct title': homeNavigationResult.html().find('head title').text() === 'Web Tours Navigation Bar'
+        }
+    );
+
+    const loginGetResult = http.get(BASE_URL + '/login.pl?intro=true', headers);
+    check(
+        loginGetResult,
+        {
+            'Get Login Request | status_code is 200': (res) => res.status === 200,
+            'Get Login Request | got correct title': loginGetResult.html().find('head title').text() === 'Welcome to Web Tours'
+        }
+    );
 }
 
 export default function () {
-    group('getSession', () => {
-        getSessionFromRootPage();
-    });
-    group('login', () => {
+    group('OpenHomePageAndLogin', () => {
+        openWelcomePage();
         login();
     });
-    group('chooseDirection', () => {
+    group('ChooseDirectionAndFindFlight', () => {
         chooseDirection();
-    });
-    group('findFlight', () => {
         findFlight();
     });
-    group('checkPaymentDetails', () => {
+    group('BuyTicketAndReturnToHomePage', () => {
         checkPaymentDetails();
+        buyTicket();
+        openHomePage();
     });
+}
+
+export function teardown() {
+    cookie = ""
+    sessionValue = "";
+    departureCity = "";
+    arrivalCity = "";
+    payloadDirectionData = {}
+    payloadFlightData = {}
+    payloadPaymentData = {}
 }
