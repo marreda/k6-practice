@@ -14,7 +14,9 @@ let cookie = ""
 let sessionValue = "";
 let departureCity = "";
 let arrivalCity = "";
+let payloadDirectionData = {}
 let payloadFlightData = {}
+let payloadPaymentData = {}
 
 export const options = {
     iterations: 1,
@@ -133,32 +135,27 @@ export function chooseDirection() {
     arrivalCity = randomItem(arrivalCities.filter((item) => item !== departureCity));
 
     // Заполняем данные о полете для POST-запроса
-    payloadFlightData["advanceDiscount"] = doc.find('input[name=advanceDiscount]').val();
-    payloadFlightData["depart"] = departureCity;
-    payloadFlightData["departDate"] = doc.find('input[name=departDate]').val();
-    payloadFlightData["arrive"] = arrivalCity;
-    payloadFlightData["returnDate"] = doc.find('input[name=returnDate]').val();
-    payloadFlightData["numPassengers"] = doc.find('input[name=numPassengers]').val();
-    payloadFlightData["seatPref"] = doc.find('input[name=seatPref][checked=checked]').val();
-    payloadFlightData["seatType"] = doc.find('input[name=seatType][checked=checked]').val();
-    payloadFlightData["findFlights.x"] = 46;
-    payloadFlightData["findFlights.y"] = 2;
+    payloadDirectionData["advanceDiscount"] = doc.find('input[name=advanceDiscount]').val();
+    payloadDirectionData["depart"] = departureCity;
+    payloadDirectionData["departDate"] = doc.find('input[name=departDate]').val();
+    payloadDirectionData["arrive"] = arrivalCity;
+    payloadDirectionData["returnDate"] = doc.find('input[name=returnDate]').val();
+    payloadDirectionData["numPassengers"] = doc.find('input[name=numPassengers]').val();
+    payloadDirectionData["seatPref"] = doc.find('input[name=seatPref][checked=checked]').val();
+    payloadDirectionData["seatType"] = doc.find('input[name=seatType][checked=checked]').val();
+    payloadDirectionData["findFlights.x"] = 46;
+    payloadDirectionData["findFlights.y"] = 2;
 }
 
 export function findFlight() {
     const headers = {
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
-            'Referer': 'http://webtours.load-test.ru:1080/cgi-bin/reservations.pl?page=welcome',
             'Cookie': cookie,
             'Pragma': 'no-cache'
         }
     };
-    const flightReservationsResult = http.post(
-        BASE_URL + '/reservations.pl',
-        payloadFlightData,
-        headers
-    );
+    const flightReservationsResult = http.post(BASE_URL + '/reservations.pl', payloadDirectionData, headers);
     check(
         flightReservationsResult,
         {
@@ -167,26 +164,62 @@ export function findFlight() {
         }
     );
 
-    // Получаем список рейсов по данному направлению
+    // Получаем список рейсов по данному направлению (flight_number;cost;date)
     let flights = []
     flightReservationsResult.html().find('input[name=outboundFlight]')
         .toArray()
         .forEach(function (item) {
-            console.log(item.val())
             flights.push(item.val());
         });
-    console.log(flights)
-    // const selectedFlight = randomItem(flights);
-    // console.log(selectedFlight)
-    // flightReservationsResult.html().find('input[name=outboundFlight]')
-    //     .toArray()
-    //     .forEach(function (item) {
-    //         console.log(item.val())
-    //     });
 
+    // Заполняем данные о рейсе для POST-запроса
+    payloadFlightData["outboundFlight"] = randomItem(flights);
+    payloadFlightData["numPassengers"] = payloadDirectionData["numPassengers"];
+    payloadFlightData["advanceDiscount"] = payloadDirectionData["advanceDiscount"];
+    payloadFlightData["seatType"] = payloadDirectionData["seatType"];
+    payloadFlightData["seatPref"] = payloadDirectionData["seatPref"];
+    payloadFlightData["reserveFlights.x"] = 76;
+    payloadFlightData["reserveFlights.y"] = 6;
+}
 
-    // const smth = flightReservationsResult.html().find('input[name=outboundFlight]').val();
-    // console.log(smth)
+export function checkPaymentDetails() {
+    const headers = {
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Cookie': cookie,
+            'Pragma': 'no-cache'
+        }
+    };
+    const flightReservationsResult = http.post(BASE_URL + '/reservations.pl', payloadFlightData, headers);
+    check(
+        flightReservationsResult,
+        {
+            'Payment reservation data | status_code is 200': (res) => res.status === 200,
+            'Got correct reservation title': flightReservationsResult.html().find('head title').text() === 'Flight Reservation'
+        }
+    );
+    const doc = flightReservationsResult.html();
+
+    // Заполняем данные о платеже для POST-запроса
+    payloadPaymentData["firstName"] = doc.find('input[name=firstName]').val();
+    payloadPaymentData["lastName"] = doc.find('input[name=lastName]').val();
+    payloadPaymentData["address1"] = doc.find('input[name=address1]').val();
+    payloadPaymentData["address2"] = doc.find('input[name=address2]').val();
+    payloadPaymentData["pass1"] = doc.find('input[name=pass1]').val();
+    payloadPaymentData["creditCard"] = doc.find('input[name=creditCard]').val();
+    payloadPaymentData["expDate"] = doc.find('input[name=expDate]').val();
+    payloadPaymentData["oldCCOption"] = doc.find('input[name=oldCCOption]').val();
+    payloadPaymentData["numPassengers"] = payloadFlightData["numPassengers"];
+    payloadPaymentData["seatType"] = payloadFlightData["seatType"];
+    payloadPaymentData["seatPref"] = payloadFlightData["seatPref"];
+    payloadPaymentData["outboundFlight"] = payloadFlightData["outboundFlight"];
+    payloadPaymentData["advanceDiscount"] = payloadFlightData["advanceDiscount"];
+    payloadPaymentData["returnFlight"] = doc.find('input[name=returnFlight]').val();
+    payloadPaymentData["JSFormSubmit"] = doc.find('input[name=JSFormSubmit]').val();
+    payloadPaymentData["buyFlights.x"] = 76;
+    payloadPaymentData["buyFlights.y"] = 6;
+
+    console.log(payloadPaymentData)
 }
 
 export default function () {
@@ -201,5 +234,8 @@ export default function () {
     });
     group('findFlight', () => {
         findFlight();
+    });
+    group('checkPaymentDetails', () => {
+        checkPaymentDetails();
     });
 }
