@@ -21,7 +21,13 @@ let payloadFlightData = {}
 let payloadPaymentData = {}
 
 export const options = {
-    iterations: 1,
+    scenarios: {
+        webtours: {
+            executor: 'constant-vus',
+            vus: 1,
+            iterations: 1,
+        },
+    },
 };
 
 function openWelcomePage() {
