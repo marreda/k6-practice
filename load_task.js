@@ -2,6 +2,7 @@ import http from 'k6/http';
 import {check} from 'k6';
 
 export const options = {
+    discardResponseBodies: true,
     scenarios: {
         yandex: {
             exec: 'openYaRu',
